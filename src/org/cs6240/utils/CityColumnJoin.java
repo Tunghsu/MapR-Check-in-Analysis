@@ -20,7 +20,7 @@ import java.util.*;
 public class CityColumnJoin {
 
     public static class CityColumnMapper
-            extends Mapper<Object, Text, NullWritable, Text>{
+            extends Mapper<Object, Text, Text, Text>{
 
         @Override
         protected void setup(Context context) throws IOException, InterruptedException {
@@ -52,24 +52,32 @@ public class CityColumnJoin {
             assert(nearest != null);
             ArrayList<String> newLine = new ArrayList<>(Arrays.asList((String[])fields));
             newLine.add(nearest.get(0));
+            newLine.add(nearest.get(nearest.size()-1));
 
-            context.write(NullWritable.get(),
-                    new Text(FileIOHelper.TabLineBuilder((String[])newLine.toArray())));
+            String newLineString = "";
+            for (String field: newLine){
+                newLineString += "\t" + field;
+            }
+            newLineString = newLineString.substring(1);
+
+            //FileIOHelper.TabLineBuilder((String[])newLine.toArray());
+            //Text result = new Text();
+            context.write(new Text(), new Text(newLineString));
         }
     }
 
-//    private static class CityColumnPartitioner extends Partitioner<KeyWithSortingValue, DerivedArrayWritable> {
+//    private static class CityColumnPartitioner extends Partitioner<Text,Text> {
 //
 //        @Override
-//        public int getPartition(KeyWithSortingValue key, DerivedArrayWritable value, int numReduceTasks) {
+//        public int getPartition(Text key, Text value, int numReduceTasks) {
 //            return 0;
 //        }
 //    }
 
     public static class CityColumnReducer
-            extends Reducer<NullWritable,Text,NullWritable,Text> {
+            extends Reducer<Text,Text,NullWritable,Text> {
 
-        public void reduce(NullWritable key, Iterable<Text> values,
+        public void reduce(Text key, Iterable<Text> values,
                            Context context
         ) throws IOException, InterruptedException {
 
@@ -94,10 +102,11 @@ public class CityColumnJoin {
         FileIOHelper.CityFileReader.open(args[0]);
 
         Job job1 = Job.getInstance(conf1, "CityColumnJoin");
-        job1.setNumReduceTasks(1);
+        //job1.setNumReduceTasks(1);
+        //job1.setPartitionerClass(CityColumnPartitioner.class);
         job1.setJarByClass(CityColumnJoin.class);
         job1.setMapperClass(CityColumnMapper.class);
-        job1.setMapOutputKeyClass(NullWritable.class);
+        job1.setMapOutputKeyClass(Text.class);
         job1.setMapOutputValueClass(Text.class);
 
         job1.setReducerClass(CityColumnReducer.class);

@@ -85,7 +85,7 @@ public class FileIOHelper {
         return line.split("\t");
     }
 
-    public static String TabLineBuilder(String[] row){
+    public static synchronized String TabLineBuilder(String[] row){
         String line = "";
         for (String field: row){
             line += "\t" + field;
