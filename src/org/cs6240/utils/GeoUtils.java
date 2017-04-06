@@ -21,4 +21,18 @@ public class GeoUtils {
 
         return 6366000*tt;
     }
+
+    // granularity = 100, distance = 8.2m
+    public static String getGridKey(Double lat, Double lng, Integer granularity){
+        lat *= 1000000;
+        lng *= 1000000;
+        Integer lat_int = lat.intValue();
+        Integer lng_int = lng.intValue();
+
+        // might be hash conflicts
+        String hashKey = ((Integer)(lat_int/granularity)).toString() +
+                ((Integer)(lng_int/granularity)).toString();
+
+        return hashKey;
+    }
 }

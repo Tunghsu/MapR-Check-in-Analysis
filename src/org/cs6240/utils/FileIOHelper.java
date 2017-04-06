@@ -17,18 +17,18 @@ import com.opencsv.CSVReader;
  */
 public class FileIOHelper {
 
-    public static class CityFileReader {
+    public static class DataFileReader {
         static BufferedReader reader;
         static List<List<String>> buffer;
         Integer index;
 
-        CityFileReader(){
+        DataFileReader(){
             index  = 0;
         }
 
-        public static void open(String CityFilePath) throws IOException{
+        public static void open(String DataFilePath) throws IOException{
             BufferedReader reader;
-            reader = new BufferedReader(new FileReader(CityFilePath));
+            reader = new BufferedReader(new FileReader(DataFilePath));
             buffer = new ArrayList<>();
 
             String line;
@@ -53,10 +53,10 @@ public class FileIOHelper {
         }
     }
 
-    public static class CityFileWriter {
+    public static class DataFileWriter {
 
-        public static void write(String CityFilePath, List<List<String>> lines) throws IOException{
-            Path file = Paths.get(CityFilePath);
+        public static void write(String DataFilePath, List<List<String>> lines) throws IOException{
+            Path file = Paths.get(DataFilePath);
             List<String> output = new ArrayList<>();
             for (List<String> row:lines){
                 String line = "";

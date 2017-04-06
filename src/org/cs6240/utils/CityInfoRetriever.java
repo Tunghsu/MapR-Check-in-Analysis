@@ -39,11 +39,11 @@ public class CityInfoRetriever {
     }
 
     private static void loadCities(String CityFilePath) throws IOException {
-        FileIOHelper.CityFileReader.open(CityFilePath);
+        FileIOHelper.DataFileReader.open(CityFilePath);
     }
 
     private static List<List<String>> join(){
-        FileIOHelper.CityFileReader reader = new FileIOHelper.CityFileReader();
+        FileIOHelper.DataFileReader reader = new FileIOHelper.DataFileReader();
         CityStructure cityInfo;
         List<List<String>> output = new ArrayList<>();
         List<String> row;
@@ -74,6 +74,6 @@ public class CityInfoRetriever {
         loadCities(args[1]);
 
         List<List<String>> result = join();
-        FileIOHelper.CityFileWriter.write(args[2], result);
+        FileIOHelper.DataFileWriter.write(args[2], result);
     }
 }
