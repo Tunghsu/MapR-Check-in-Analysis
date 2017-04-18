@@ -6,8 +6,8 @@ package org.cs6240.utils;
 public class GeoUtils {
 
     // From http://stackoverflow.com/questions/3715521/how-can-i-calculate-the-distance-between-two-gps-points-in-java
-    public static double getDistance(double lat_a, double lng_a, double lat_b, double lng_b) {
-        double pk = 180/3.14169;
+    public static synchronized double getDistance(double lat_a, double lng_a, double lat_b, double lng_b) {
+        double pk = 180/3.14159;
 
         double a1 = lat_a / pk;
         double a2 = lng_a / pk;
@@ -23,14 +23,14 @@ public class GeoUtils {
     }
 
     // granularity = 100, distance = 8.2m
-    public static String getGridKey(Double lat, Double lng, Integer granularity){
+    public static String getGridKey(String city, Double lat, Double lng, Integer granularity){
         lat *= 1000000;
         lng *= 1000000;
         Integer lat_int = lat.intValue();
         Integer lng_int = lng.intValue();
 
         // might be hash conflicts
-        String hashKey = ((Integer)(lat_int/granularity)).toString() +
+        String hashKey = city + ((Integer)(lat_int/granularity)).toString() +
                 ((Integer)(lng_int/granularity)).toString();
 
         return hashKey;

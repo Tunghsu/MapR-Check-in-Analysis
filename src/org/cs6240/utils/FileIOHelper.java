@@ -19,7 +19,7 @@ public class FileIOHelper {
 
     public static class DataFileReader {
         static BufferedReader reader;
-        static List<List<String>> buffer;
+        public static List<List<String>> buffer;
         Integer index;
 
         DataFileReader(){
@@ -74,6 +74,17 @@ public class FileIOHelper {
 
         public static List<String[]> load(String CityInfoFilePath) throws IOException{
             CSVReader reader = new CSVReader(new FileReader(CityInfoFilePath));
+            List<String[]> lines = reader.readAll();
+
+            return lines;
+
+        }
+    }
+
+    public static class CSVFileReader {
+
+        public static List<String[]> load(String FilePath) throws IOException{
+            CSVReader reader = new CSVReader(new FileReader(FilePath));
             List<String[]> lines = reader.readAll();
 
             return lines;
