@@ -3,6 +3,9 @@ package org.cs6240;
 import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.io.ArrayWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
@@ -13,9 +16,11 @@ import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.GenericOptionsParser;
+import org.apache.htrace.fasterxml.jackson.databind.Module;
 import org.cs6240.utils.CityColumnJoin;
 import org.cs6240.utils.FileIOHelper;
 import org.cs6240.utils.GeoUtils;
+import org.cs6240.utils.HBaseHelper;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -33,15 +38,20 @@ public class KMeans {
     public static HashMap<String, String[]> cityTable;
     public static HashMap<String, ArrayList<double[]>> CityPoints;
     public static JSONArray allPointsJsonArray;
+    private static Boolean TableCreated = true;
+    private static Double ReservedWeight = 0.4;
+    private static String SpecializedType = "3";
 
     public static class Venue {
         public Double lat, lng, distanceToCenter;
         public String id;
+        public Integer NumOfCheckIn;
 
-        Venue(Double latitude, Double longitude, String venueId){
+        Venue(Double latitude, Double longitude, String venueId, Integer NumOfCheckIn){
             lat = latitude;
             lng = longitude;
             id = venueId;
+            this.NumOfCheckIn = NumOfCheckIn;
         }
     }
 
@@ -126,7 +136,7 @@ public class KMeans {
 
             if (updatedVenues.size() < 5)
                 continue;
-            List<Venue> filteredVenues = updatedVenues.subList(0, ((Double)((updatedVenues.size()-1)*(0.))).intValue());
+            List<Venue> filteredVenues = updatedVenues.subList(0, ((Double)((updatedVenues.size()-1)*(ReservedWeight))).intValue());
             if (filteredVenues.size() == 0)
                 continue;
             Double maxDistance = filteredVenues.get(0).distanceToCenter;
@@ -204,12 +214,15 @@ public class KMeans {
 
     private static double[] CalcNewCenterPoint(ArrayList<Venue> venues){
         double[] point = {0.0, 0.0};
+        int total = 0;
         for (Venue venue: venues){
-            point[0] += venue.lat;
-            point[1] += venue.lng;
+            int currentWeight = venue.NumOfCheckIn;
+            total += currentWeight;
+            point[0] += venue.lat*currentWeight;
+            point[1] += venue.lng*currentWeight;
         }
-        point[0] /= venues.size();
-        point[1] /= venues.size();
+        point[0] /= total;
+        point[1] /= total;
 
         point[0] = Math.round(point[0] * 1000000.0 ) / 1000000.0;
         point[1] = Math.round(point[1] * 1000000.0 ) / 1000000.0;
@@ -227,28 +240,56 @@ public class KMeans {
     public static class KMeansMapper
             extends Mapper<Object, Text, Text, Text> {
 
+        HBaseHelper helper = null;
+
+        @Override
+        public void setup(Context context){
+            try {
+                helper = new HBaseHelper("Venues");
+            } catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+
         public void map(Object key, Text value, Context context
         ) throws IOException, InterruptedException {
             JSONObject jsonObject = new JSONObject(value.toString());
 
             String city = jsonObject.getString("City");
             String type = jsonObject.getString("Cat");
+            String id = jsonObject.getString("ID");
+            JSONArray checkIn = jsonObject.getJSONArray("Check-Ins");
 
             assert(city != null && type != null);
 
             // For a certain type of venue only
-            if (!type.equals("3"))
+            if (!type.equals(SpecializedType))
                 return;
 
             //System.out.println(key);
-            context.write(new Text(city), value);
+            //context.write(new Text(city), value);
+
+            HashMap<String, String> map = new HashMap<>();
+
+            //map.put("id", id);
+            //map.put("city", city);
+            map.put("lat", jsonObject.getString("Lat"));
+            map.put("lng", jsonObject.getString("Lng"));
+            map.put("numOfCheckIn", ((Integer)checkIn.length()).toString());
+            try {
+                helper.addRecordFieldsByHashMap(id, "data", map);
+            } catch (Exception e){
+                e.printStackTrace();
+            }
+
+            context.write(new Text(city), new Text(id));
         }
     }
 
-    private static class KMeansPartitioner extends Partitioner<Text,Text> {
+    private static class KMeansPartitioner extends Partitioner<Text,NullWritable> {
 
         @Override
-        public int getPartition(Text key, Text value, int numReduceTasks) {
+        public int getPartition(Text key, NullWritable value, int numReduceTasks) {
             if (numReduceTasks == 0)
                 return 0;
             return key.hashCode() % numReduceTasks;
@@ -258,9 +299,20 @@ public class KMeans {
     public static class KMeansReducer
             extends Reducer<Text,Text,NullWritable,Text> {
 
+        HBaseHelper helper = null;
+
+        @Override
+        public void setup(Context context){
+            try {
+                helper = new HBaseHelper("Venues");
+            } catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+
         @Override
         public void cleanup(Context context) throws IOException, InterruptedException{
-            //context.write(NullWritable.get(), new Text(allPointsJsonArray.toString()));
+            context.write(NullWritable.get(), new Text(allPointsJsonArray.toString()));
         }
         public void reduce(Text key, Iterable<Text> values,
                            Context context
@@ -293,14 +345,28 @@ public class KMeans {
             }
 
             // Get All venues
+//            Iterator<Text> iterator = values.iterator();
+//            while (iterator.hasNext()) {
+//                Text currentValue = iterator.next();
+//                JSONObject jsonObject = new JSONObject(currentValue.toString());
+//                Double latitude = Double.parseDouble(jsonObject.getString("Lat"));
+//                Double longitude = Double.parseDouble(jsonObject.getString("Lng"));
+//                String id = jsonObject.getString("ID");
+//                JSONArray checkIn = jsonObject.getJSONArray("Check-Ins");
+//                Integer checkInNumber = checkIn.length();
+//                venueList.add(new Venue(latitude, longitude, id, checkInNumber));
+//            }
+
+            // Get all venues from HBase
             Iterator<Text> iterator = values.iterator();
             while (iterator.hasNext()) {
                 Text currentValue = iterator.next();
-                JSONObject jsonObject = new JSONObject(currentValue.toString());
-                Double latitude = Double.parseDouble(jsonObject.getString("Lat"));
-                Double longitude = Double.parseDouble(jsonObject.getString("Lng"));
-                String id = jsonObject.getString("ID");
-                venueList.add(new Venue(latitude, longitude, id));
+                Result rs = helper.getOneRecord(currentValue.toString());
+                Double latitude = Double.parseDouble(Bytes.toString(rs.getValue(Bytes.toBytes("data"), Bytes.toBytes("lat"))));
+                Double longitude = Double.parseDouble(Bytes.toString(rs.getValue(Bytes.toBytes("data"), Bytes.toBytes("lng"))));
+                String id = Bytes.toString(rs.getValue(Bytes.toBytes("data"), Bytes.toBytes("id")));
+                Integer checkInNumber = Integer.parseInt(Bytes.toString(rs.getValue(Bytes.toBytes("data"), Bytes.toBytes("numOfCheckIn"))));
+                venueList.add(new Venue(latitude, longitude, id, checkInNumber));
             }
 
 
@@ -350,11 +416,11 @@ public class KMeans {
 
             HashMap<double[], List<Venue>> FinalKPointsTable = CalcRanges(LastPointsTable);
 
-            //BuildJsonForGoogleMap(FinalKPointsTable);
+            BuildJsonForGoogleMap(FinalKPointsTable);
 
-            String jsonTextWithVenue = BuildJsonWithVenues(LastPointsTable, key.toString());
+            //String jsonTextWithVenue = BuildJsonWithVenues(LastPointsTable, key.toString());
 
-            context.write(NullWritable.get(), new Text(jsonTextWithVenue));
+            //context.write(NullWritable.get(), new Text(jsonTextWithVenue));
 
         }
     }
@@ -372,6 +438,11 @@ public class KMeans {
 
 //        List<String[]> lines = FileIOHelper.CSVFileReader.load(otherArgs[2]);
 //        categoryTableProcess(lines);
+
+        // Hbase
+        TableCreated = HBaseHelper.createTable("Venues", "data");
+
+        HBaseHelper.createTable("Points", "data");
 
         FileIOHelper.DataFileReader.open(args[1]);
         cityTableProcess();
