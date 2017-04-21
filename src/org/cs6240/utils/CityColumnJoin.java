@@ -52,7 +52,7 @@ public class CityColumnJoin {
             assert(nearest != null);
             ArrayList<String> newLine = new ArrayList<>(Arrays.asList((String[])fields));
             newLine.add(nearest.get(0));
-            newLine.add(nearest.get(nearest.size()-1));
+            //newLine.add(nearest.get(nearest.size()-1));
 
             String newLineString = "";
             for (String field: newLine){
