@@ -103,15 +103,41 @@ public class HBaseHelper {
         }
     }
 
-    public void addRecordSingleField(java.io.Serializable rowKey,
-                                         String family, String field, java.io.Serializable value) throws Exception {
+    public void addRecordSingleField(String rowKey,
+                                         String family, String field, String value) throws Exception {
         try {
             Put put = new Put(SerializationUtils.serialize(rowKey));
-            put.add(Bytes.toBytes(family), Bytes.toBytes(field), SerializationUtils.serialize(value));
+            put.add(Bytes.toBytes(family), Bytes.toBytes(field), Bytes.toBytes(value));
             table.put(put);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public void addRecordSerilzibleField(Serializable rowKey,
+                                     String family, Serializable field, Serializable value) throws Exception {
+        try {
+            Put put = new Put(SerializationUtils.serialize(rowKey));
+            put.add(Bytes.toBytes(family), SerializationUtils.serialize(field), SerializationUtils.serialize(value));
+            table.put(put);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public ArrayList<Result> getValueFilteredSerilzibleFields(Serializable value, Serializable field) throws IOException{
+        ArrayList<Result> rs = new ArrayList<>();
+        Scan scan = new Scan();
+        scan.addColumn(Bytes.toBytes("data"), SerializationUtils.serialize(field));
+        Filter filter = new SingleColumnValueFilter(Bytes.toBytes("data"), SerializationUtils.serialize(field),
+                CompareFilter.CompareOp.EQUAL, SerializationUtils.serialize(value));
+        scan.setFilter(filter);
+
+        ResultScanner scanner = table.getScanner(scan);
+        for (Result result = scanner.next(); result != null; result = scanner.next()){
+            rs.add(result);
+        }
+        return rs;
     }
 
     public Result getOneRecord (String rowKey) throws IOException{
@@ -120,12 +146,12 @@ public class HBaseHelper {
         return rs;
     }
 
-    public ArrayList<Result> getValueFilteredRecords(java.io.Serializable value, String field) throws IOException{
+    public ArrayList<Result> getValueFilteredRecords(String value, String field) throws IOException{
         ArrayList<Result> rs = new ArrayList<>();
         Scan scan = new Scan();
-        scan.addColumn(Bytes.toBytes("data"), Bytes.toBytes("City"));
+        scan.addColumn(Bytes.toBytes("data"), Bytes.toBytes(field));
         Filter filter = new SingleColumnValueFilter(Bytes.toBytes("data"), Bytes.toBytes(field),
-                CompareFilter.CompareOp.EQUAL, SerializationUtils.serialize(value));
+                CompareFilter.CompareOp.EQUAL, Bytes.toBytes(value));
         scan.setFilter(filter);
 
         ResultScanner scanner = table.getScanner(scan);
@@ -138,7 +164,7 @@ public class HBaseHelper {
     public ArrayList<Result> getMultiValuesFilteredRecords(HashMap<String, Serializable> map) throws IOException{
         ArrayList<Result> rs = new ArrayList<>();
         Scan scan = new Scan();
-        scan.addColumn(Bytes.toBytes("data"), Bytes.toBytes("City"));
+        scan.addColumn(Bytes.toBytes("data"), Bytes.toBytes("city"));
         FilterList filterList = new FilterList();
         for (Map.Entry e: map.entrySet()) {
             Filter filter = new SingleColumnValueFilter(Bytes.toBytes("data"), Bytes.toBytes((String)e.getKey()),
@@ -169,8 +195,14 @@ public class HBaseHelper {
         return rowCount;
     }
 
-    public void removeRow(java.io.Serializable rowKey) throws IOException {
+    public void removeSerializedRow(java.io.Serializable rowKey) throws IOException {
         Delete delete = new Delete(SerializationUtils.serialize(rowKey));
+
+        table.delete(delete);
+    }
+
+    public void removeRow(String rowKey) throws IOException {
+        Delete delete = new Delete(Bytes.toBytes(rowKey));
 
         table.delete(delete);
     }
