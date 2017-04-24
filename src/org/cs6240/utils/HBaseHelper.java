@@ -5,6 +5,7 @@ package org.cs6240.utils;
  */
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.*;
 
 import org.apache.hadoop.conf.Configuration;
@@ -13,7 +14,12 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.filter.CompareFilter;
+import org.apache.hadoop.hbase.filter.Filter;
+import org.apache.hadoop.hbase.filter.FilterList;
+import org.apache.hadoop.hbase.filter.SingleColumnValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.commons.lang.SerializationUtils;
 
 
 /**
@@ -97,9 +103,76 @@ public class HBaseHelper {
         }
     }
 
+    public void addRecordSingleField(java.io.Serializable rowKey,
+                                         String family, String field, java.io.Serializable value) throws Exception {
+        try {
+            Put put = new Put(SerializationUtils.serialize(rowKey));
+            put.add(Bytes.toBytes(family), Bytes.toBytes(field), SerializationUtils.serialize(value));
+            table.put(put);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     public Result getOneRecord (String rowKey) throws IOException{
         Get get = new Get(rowKey.getBytes());
         Result rs = table.get(get);
         return rs;
     }
+
+    public ArrayList<Result> getValueFilteredRecords(java.io.Serializable value, String field) throws IOException{
+        ArrayList<Result> rs = new ArrayList<>();
+        Scan scan = new Scan();
+        scan.addColumn(Bytes.toBytes("data"), Bytes.toBytes("City"));
+        Filter filter = new SingleColumnValueFilter(Bytes.toBytes("data"), Bytes.toBytes(field),
+                CompareFilter.CompareOp.EQUAL, SerializationUtils.serialize(value));
+        scan.setFilter(filter);
+
+        ResultScanner scanner = table.getScanner(scan);
+        for (Result result = scanner.next(); result != null; result = scanner.next()){
+            rs.add(result);
+        }
+        return rs;
+    }
+
+    public ArrayList<Result> getMultiValuesFilteredRecords(HashMap<String, Serializable> map) throws IOException{
+        ArrayList<Result> rs = new ArrayList<>();
+        Scan scan = new Scan();
+        scan.addColumn(Bytes.toBytes("data"), Bytes.toBytes("City"));
+        FilterList filterList = new FilterList();
+        for (Map.Entry e: map.entrySet()) {
+            Filter filter = new SingleColumnValueFilter(Bytes.toBytes("data"), Bytes.toBytes((String)e.getKey()),
+                    CompareFilter.CompareOp.EQUAL, SerializationUtils.serialize((Serializable) e.getValue()));
+            filterList.addFilter(filter);
+        }
+        scan.setFilter(filterList);
+
+        ResultScanner scanner = table.getScanner(scan);
+        for (Result result = scanner.next(); result != null; result = scanner.next()){
+            rs.add(result);
+        }
+        return rs;
+    }
+
+    // http://tec.5lulu.com/detail/109k1n1h941ar8yc3.html
+    public long rowCount() {
+        long rowCount = 0;
+        try {
+            Scan scan = new Scan();
+            ResultScanner resultScanner = table.getScanner(scan);
+            for (Result result : resultScanner) {
+                rowCount += result.size();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return rowCount;
+    }
+
+    public void removeRow(java.io.Serializable rowKey) throws IOException {
+        Delete delete = new Delete(SerializationUtils.serialize(rowKey));
+
+        table.delete(delete);
+    }
+
 }
