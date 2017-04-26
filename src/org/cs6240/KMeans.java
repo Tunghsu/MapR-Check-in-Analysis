@@ -28,7 +28,9 @@ import org.json.JSONObject;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.File;
 import java.io.IOException;
+import java.sql.Timestamp;
 import java.util.*;
 
 /**
@@ -83,7 +85,6 @@ public class KMeans {
 
     private static class DoubleKeys implements WritableComparable {
         private String city;
-        private HashablePoint point;
         private String lat, lng;
         public DoubleKeys() {}
         public DoubleKeys(String key, double[] coordinate){
@@ -140,7 +141,7 @@ public class KMeans {
     }
 
     private static Integer CalculateK(double density){
-        return (int)density/15;
+        return (int)(density/15)+1;
     }
 
     private static Double CalcDistance(double[] coordinate, double[] point){
@@ -295,6 +296,7 @@ public class KMeans {
             extends Mapper<Object, Text, Text, Text> {
 
         HBaseHelper helper = null, backupHelper = null;
+        private static long lastTS = 0;
 
         @Override
         public void setup(Context context){
@@ -308,6 +310,8 @@ public class KMeans {
 
         public void map(Object key, Text value, Context context
         ) throws IOException, InterruptedException {
+
+
             JSONObject jsonObject = new JSONObject(value.toString());
 
             String city = jsonObject.getString("City");
@@ -318,7 +322,7 @@ public class KMeans {
             assert (city != null && type != null);
 
             // For a certain type of venue only
-            if (!type.equals(SpecializedType))
+            if (!type.equals("3"))
                 return;
 
             HashMap<String, String> map = new HashMap<>();
@@ -328,11 +332,20 @@ public class KMeans {
             map.put("city", city);
             map.put("numOfCheckIn", ((Integer)checkIn.length()).toString());
             try {
+//                helper = new HBaseHelper("Venues");
+//                backupHelper = new HBaseHelper("VenuesBackup");
                 helper.addRecordFieldsByHashMap(id, "data", map);
                 backupHelper.addRecordFieldsByHashMap(id, "data", map);
             } catch (Exception e){
                 e.printStackTrace();
             }
+
+//            Long ts = System.currentTimeMillis();
+//            if (ts - lastTS > 20000){
+//                lastTS = ts;
+//                context.progress();
+//            }
+
 
             context.write(new Text(city), new Text(id));
         }
@@ -342,6 +355,7 @@ public class KMeans {
             extends TableMapper<DoubleKeys, Text> {
 
         HBaseHelper helper;
+        //private static long lastTS = 0;
 
         @Override
         public void setup(Context context){
@@ -359,6 +373,7 @@ public class KMeans {
             String lngString = new String(value.getValue(Bytes.toBytes("data"), Bytes.toBytes("lng")));
             String city = new String(value.getValue(Bytes.toBytes("data"), Bytes.toBytes("city")));
 
+            //helper = new HBaseHelper("Points");
             ArrayList<Result> points = helper.getValueFilteredSerilzibleFields(city, "city");
 
             double minDistance = Double.MAX_VALUE;
@@ -374,19 +389,28 @@ public class KMeans {
                 }
             }
 
+
+//            Long ts = System.currentTimeMillis();
+//            if (ts - lastTS > 20000){
+//                lastTS = ts;
+//                context.progress();
+//            }
+
+            if (minPoint == null)
+                return;
             DoubleKeys key = new DoubleKeys(city, minPoint);
             String val = new String(row.get());
             context.write(key, new Text(val));
         }
     }
 
-    private static class KMeansPartitioner extends Partitioner<Text,NullWritable> {
+    private static class KMeansPartitioner extends Partitioner<Text,Text> {
 
         @Override
-        public int getPartition(Text key, NullWritable value, int numReduceTasks) {
+        public int getPartition(Text key, Text value, int numReduceTasks) {
             if (numReduceTasks == 0)
                 return 0;
-            return key.hashCode() % numReduceTasks;
+            return (key.hashCode() & Integer.MAX_VALUE) % numReduceTasks;
         }
     }
 
@@ -396,7 +420,7 @@ public class KMeans {
         public int getPartition(DoubleKeys key, Text value, int numReduceTasks) {
             if (numReduceTasks == 0)
                 return 0;
-            return key.city.hashCode() % numReduceTasks;
+            return (key.city.hashCode() & Integer.MAX_VALUE) % numReduceTasks;
         }
     }
 
@@ -424,6 +448,9 @@ public class KMeans {
         public void setup(Context context) {
             try {
                 helper = new HBaseHelper("Points");
+
+                FileIOHelper.DataFileReader.openS3();
+                cityTableProcess();
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -431,7 +458,10 @@ public class KMeans {
 
         @Override
         public void cleanup(Context context) throws IOException, InterruptedException {
-            context.write(NullWritable.get(), new Text(allPointsJsonArray.toString()));
+//            if (allPointsJsonArray == null){
+//                return;
+//            }
+//            context.write(NullWritable.get(), new Text(allPointsJsonArray.toString()));
         }
 
         public void reduce(Text key, Iterable<Text> values,
@@ -448,6 +478,7 @@ public class KMeans {
 
             // Generate initial K points
             InitKPoints(KPointsTable, coordinates, k, lat, lng);
+            //helper = new HBaseHelper("Points");
 
             try {
                 for (double[] p : coordinates)
@@ -463,6 +494,7 @@ public class KMeans {
 
         HBaseHelper helper = null;
         HBaseHelper pointsHelper = null;
+        private static long lastTS = 0;
         HashMap<String, ArrayList<double[]>> newPointsList = null;
 
         @Override
@@ -479,7 +511,16 @@ public class KMeans {
         @Override
         public void cleanup(Context context) throws IOException, InterruptedException {
             HBaseHelper pointHelper = new HBaseHelper("Points");
+            helper = new HBaseHelper("Venues");
             for (Map.Entry e : newPointsList.entrySet()) {
+
+//                Long ts = System.currentTimeMillis();
+//                if (ts - lastTS > 20000){
+//                    lastTS = ts;
+//                    context.progress();
+//                }
+
+
                 String city = (String) e.getKey();
                 ArrayList<Result> oldPoints = pointsHelper.getValueFilteredSerilzibleFields(city, "city");
                 HashSet<double[]> oldPointsHashSet = new HashSet<>();
@@ -521,6 +562,7 @@ public class KMeans {
                            Context context
         ) throws IOException, InterruptedException {
 
+            //helper = new HBaseHelper("Venues");
             String city = key.city;
             ArrayList<Venue> venueList = new ArrayList<>();
 
@@ -534,6 +576,12 @@ public class KMeans {
                 String id = Bytes.toString(rs.getValue(Bytes.toBytes("data"), Bytes.toBytes("id")));
                 Integer checkInNumber = Integer.parseInt(Bytes.toString(rs.getValue(Bytes.toBytes("data"), Bytes.toBytes("numOfCheckIn"))));
                 venueList.add(new Venue(latitude, longitude, id, checkInNumber));
+
+//                Long ts = System.currentTimeMillis();
+//                if (ts - lastTS > 20000){
+//                    lastTS = ts;
+//                    context.progress();
+//                }
             }
 
             double[] newPoint = CalcNewCenterPoint(venueList);
@@ -554,6 +602,7 @@ public class KMeans {
                 PointsMap = new HashMap<>();
                 try {
                     helper = new HBaseHelper("VenuesBackup");
+                    allPointsJsonArray = new JSONArray();
                 } catch (Exception e){
                     e.printStackTrace();
                 }
@@ -569,6 +618,7 @@ public class KMeans {
                                Context context
             ) throws IOException, InterruptedException {
 
+                //helper = new HBaseHelper("Venues");
                 Double lat = Double.parseDouble(key.lat);
                 Double lng = Double.parseDouble(key.lng);
                 ArrayList<Venue> venueList = new ArrayList<>();
@@ -590,6 +640,7 @@ public class KMeans {
 
     public static void main(String[] args) throws Exception {
         Configuration conf1 = new Configuration();
+        conf1.setInt("mapreduce.task.timeout", 16000000);
         String[] otherArgs = new GenericOptionsParser(conf1, args).getRemainingArgs();
 
         if (otherArgs.length < 3) {
@@ -599,31 +650,33 @@ public class KMeans {
         }
 
         // Hbase
-        HBaseHelper.createTable("Venues", "data");
-        HBaseHelper.createTable("VenuesBackup", "data");
-        HBaseHelper.createTable("Points", "data");
+        Boolean created = false;
+        created = HBaseHelper.createTable("Venues", "data") || created;
+        created = HBaseHelper.createTable("VenuesBackup", "data") || created;
+        created = HBaseHelper.createTable("Points", "data") || created;
 
-        FileIOHelper.DataFileReader.open(args[1]);
+        //FileIOHelper.DataFileReader.open(args[1]);
+        FileIOHelper.DataFileReader.openS3();
         cityTableProcess();
-        //KMeans.CityPoints = new HashMap<>();
-        KMeans.allPointsJsonArray = new JSONArray();
-        Job job1 = Job.getInstance(conf1, "KMeans");
 
-        job1.setJarByClass(KMeans.class);
-        job1.setPartitionerClass(KMeansPartitioner.class);
-        job1.setMapperClass(KMeansMapper.class);
-        job1.setMapOutputKeyClass(Text.class);
-        job1.setMapOutputValueClass(Text.class);
+        //if (created) {
+            Job job1 = Job.getInstance(conf1, "KMeans");
 
-        job1.setReducerClass(KMeansReducer.class);
-        job1.setOutputKeyClass(NullWritable.class);
-        job1.setOutputValueClass(Text.class);
-        FileInputFormat.addInputPath(job1, new Path(otherArgs[0]));
-        job1.setOutputFormatClass(NullOutputFormat.class);
+            job1.setJarByClass(KMeans.class);
+            job1.setPartitionerClass(KMeansPartitioner.class);
+            job1.setMapperClass(KMeansMapper.class);
+            job1.setMapOutputKeyClass(Text.class);
+            job1.setMapOutputValueClass(Text.class);
 
-        if (!job1.waitForCompletion(true))
-            System.exit(1);
+            job1.setReducerClass(KMeansReducer.class);
+            job1.setOutputKeyClass(NullWritable.class);
+            job1.setOutputValueClass(Text.class);
+            FileInputFormat.addInputPath(job1, new Path(otherArgs[0]));
+            job1.setOutputFormatClass(NullOutputFormat.class);
 
+            if (!job1.waitForCompletion(true))
+                System.exit(1);
+        //}
 
         HBaseHelper helper = new HBaseHelper("Venues");
         Integer MaxRound = 200, round = 0;
@@ -631,6 +684,7 @@ public class KMeans {
         while (round < MaxRound && helper.rowCount() > 0){
             round++;
             Configuration conf = new HBaseConfiguration();
+            conf.setInt("mapreduce.task.timeout", 16000000);
             Scan scan = new Scan();
             scan.setCaching(500);
             scan.setCacheBlocks(false);
@@ -655,13 +709,15 @@ public class KMeans {
             if (!Iteratejob.waitForCompletion(true))
                 System.exit(1);
 
-            System.out.println(helper.rowCount());
+            System.err.println("Current remain records: " + helper.rowCount());
         }
 
         Configuration conf = new HBaseConfiguration();
         Scan scan = new Scan();
         scan.setCaching(500);
         scan.setCacheBlocks(false);
+        conf.setInt("mapreduce.task.timeout", 16000000);
+
         Job Lastjob = Job.getInstance(conf, "Output");
 
         TableMapReduceUtil.initTableMapperJob(
@@ -676,6 +732,7 @@ public class KMeans {
         Lastjob.setMapperClass(KMeansSecondaryMapper.class);
         Lastjob.setPartitionerClass(KMeansSecondaryPartitioner.class);
 
+        Lastjob.setNumReduceTasks(1);
         Lastjob.setGroupingComparatorClass(KMeansSecondaryGroupingComparator.class);
         Lastjob.setReducerClass(KMeansThirdReducer.class);
         Lastjob.setOutputKeyClass(NullWritable.class);

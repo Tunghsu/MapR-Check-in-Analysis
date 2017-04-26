@@ -14,6 +14,7 @@ import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.rest.client.*;
 import org.apache.hadoop.hbase.filter.CompareFilter;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.FilterList;
@@ -28,10 +29,11 @@ import org.apache.commons.lang.SerializationUtils;
 public class HBaseHelper {
     public static Configuration conf = null;
     private String tableName = null;
-    private HTable table = null;
+    private RemoteHTable table = null;
 
     static {
-        conf = HBaseConfiguration.create();
+//        conf = HBaseConfiguration.create();
+//        conf.addResource("/home/hadoop/hbase/conf/hbase-site.xml");
         //conf.set("hbase.zookeeper.quorum", "127.0.0.1");
         //conf.set("hbase.zookeeper.property.clientPort", "2181");
     }
@@ -41,15 +43,32 @@ public class HBaseHelper {
     }
 
     public HBaseHelper(String tableName) throws IOException{
+        conf = HBaseConfiguration.create();
         this.tableName = tableName;
-        this.table = new HTable(conf, tableName);
+        //conf.addResource("/home/hadoop/hbase/conf/hbase-site.xml");
+
+        Cluster cluster = new Cluster();
+        cluster.add("ec2-52-89-80-135.us-west-2.compute.amazonaws.com", 8070); // co RestExample-1-Cluster Set up a cluster list adding all known REST server hosts.
+
+        Client client = new Client(cluster); // co RestExample-2-Client Create the client handling the HTTP communication.
+        table = new RemoteHTable(client, tableName);
+
+        //this.table = new HTable(conf, tableName);
     }
 
     public static Boolean createTable(String tableName, String family)
             throws Exception {
+        conf = HBaseConfiguration.create();
+        //conf.addResource("/home/hadoop/hbase/conf/hbase-site.xml");
 
-        HBaseAdmin admin = new HBaseAdmin(conf);
-        if (admin.tableExists(tableName)) {
+        Cluster cluster = new Cluster();
+        cluster.add("ec2-52-89-80-135.us-west-2.compute.amazonaws.com", 8070);
+        Client client = new Client(cluster);
+        RemoteAdmin admin = new RemoteAdmin(client, conf);
+
+        //HBaseAdmin admin = new HBaseAdmin(conf);
+        //HBaseAdmin.checkHBaseAvailable(conf);
+        if (admin.isTableAvailable(tableName)) {
             return false;
         } else {
             // Add family then create table

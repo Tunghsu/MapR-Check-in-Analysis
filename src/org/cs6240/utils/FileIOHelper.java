@@ -9,6 +9,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.AmazonS3;
 import com.opencsv.CSVReader;
 
 
@@ -29,6 +36,37 @@ public class FileIOHelper {
         public static void open(String DataFilePath) throws IOException{
             BufferedReader reader;
             reader = new BufferedReader(new FileReader(DataFilePath));
+            buffer = new ArrayList<>();
+
+            String line;
+            while ((line=reader.readLine()) != null){
+                String[] fields= line.split("\t");
+                List<String> row = Arrays.asList(fields);
+                buffer.add(row);
+            }
+
+        }
+
+        public static void openS3() throws IOException{
+            AWSCredentials credentials = new AWSCredentials() {
+                @Override
+                public String getAWSAccessKeyId() {
+                    return "AKIAJW4RCLV666EREINA";
+                }
+
+                @Override
+                public String getAWSSecretKey() {
+                    return "72hba9z8qNJovhMqgHP7kpz83Sz9KViCGroGEw7s";
+                }
+            };
+            AmazonS3 s3 = new AmazonS3Client(credentials);
+            Region usWest2 = Region.getRegion(Regions.US_WEST_2);
+            s3.setRegion(usWest2);
+
+            BufferedReader reader;
+
+            S3Object s3object = s3.getObject(new GetObjectRequest("mapreduce-project-hw", "cities"));
+            reader = new BufferedReader(new InputStreamReader(s3object.getObjectContent()));
             buffer = new ArrayList<>();
 
             String line;

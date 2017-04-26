@@ -29,9 +29,6 @@ import java.util.*;
  */
 public class GridGenerator {
 
-    //public static HashMap<String, String> cityTable, categoryTable;
-
-
     public static class DerivedArrayWritable extends ArrayWritable {
         public DerivedArrayWritable() {
             super(Text.class);
@@ -54,20 +51,6 @@ public class GridGenerator {
         localDifference *= 1000*60;
         return timeStamp + localDifference;
     }
-
-//    public static void cityTableProcess(){
-//        cityTable = new HashMap<>();
-//        for (List<String> strings: FileIOHelper.DataFileReader.buffer){
-//            cityTable.put(strings.get(0), strings.get(5));
-//        }
-//    }
-
-//    public static void categoryTableProcess(List<String[]> categories){
-//        categoryTable = new HashMap<>();
-//        for (String[] category: categories){
-//            categoryTable.put(category[0], category[1]);
-//        }
-//    }
 
     public static class GridGeneratorMapper
             extends Mapper<Object, Text, Text, DerivedArrayWritable> {
@@ -98,15 +81,15 @@ public class GridGenerator {
         }
     }
 
-    private static class GridGeneratorPartitioner extends Partitioner<Text,DerivedArrayWritable> {
-
-        @Override
-        public int getPartition(Text key, DerivedArrayWritable value, int numReduceTasks) {
-            if (numReduceTasks == 0)
-                return 0;
-            return key.hashCode() % numReduceTasks;
-        }
-    }
+//    private static class GridGeneratorPartitioner extends Partitioner<Text,DerivedArrayWritable> {
+//
+//        @Override
+//        public int getPartition(Text key, DerivedArrayWritable value, int numReduceTasks) {
+//            if (numReduceTasks == 0)
+//                return 0;
+//            return (key.hashCode() & Integer.MAX_VALUE) % numReduceTasks;
+//        }
+//    }
 
     public static class GridGeneratorReducer
             extends Reducer<Text,DerivedArrayWritable,NullWritable,Text> {
@@ -160,22 +143,16 @@ public class GridGenerator {
         Configuration conf1 = new Configuration();
         String[] otherArgs = new GenericOptionsParser(conf1, args).getRemainingArgs();
 
-        if (otherArgs.length < 4) {
-            System.err.println("Usage: AddCityBroadRange <Venue file> " +
-                    "<Check-in file> <Category file> <Output file>");
+        if (otherArgs.length < 3) {
+            System.err.println("Usage: AddCityBroadRange <Venue file (with category)> " +
+                    "<Check-in file> <Output file>");
             System.exit(2);
         }
 
-//        List<String[]> lines = FileIOHelper.CSVFileReader.load(otherArgs[2]);
-//        categoryTableProcess(lines);
+        Job job1 = Job.getInstance(conf1, "GridGenerator");
 
-//        FileIOHelper.DataFileReader.open(args[3]);
-//        cityTableProcess();
-
-        Job job1 = Job.getInstance(conf1, "CityColumnJoin");
-
-        job1.setJarByClass(CityColumnJoin.class);
-        job1.setPartitionerClass(GridGeneratorPartitioner.class);
+        job1.setJarByClass(GridGenerator.class);
+        //job1.setPartitionerClass(GridGeneratorPartitioner.class);
         job1.setMapperClass(GridGeneratorMapper.class);
         job1.setMapOutputKeyClass(Text.class);
         job1.setMapOutputValueClass(DerivedArrayWritable.class);
@@ -185,7 +162,7 @@ public class GridGenerator {
         job1.setOutputValueClass(Text.class);
         FileInputFormat.addInputPath(job1, new Path(otherArgs[0]));
         FileInputFormat.addInputPath(job1, new Path(otherArgs[1]));
-        FileOutputFormat.setOutputPath(job1, new Path(otherArgs[3]));
+        FileOutputFormat.setOutputPath(job1, new Path(otherArgs[2]));
 
         if (!job1.waitForCompletion(true))
             System.exit(1);
